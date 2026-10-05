@@ -1,0 +1,7 @@
+{
+  "name": "DIGI DIGITAL SEWA - Digital Service Center & Cyber Cafe Management",
+  "description": "Professional single shop management software for DIGI DIGITAL SEWA, Nepal. Complete POS billing, online government application tracking, photo/printing/design orders, student services, due tracking, inventory, and expense management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
