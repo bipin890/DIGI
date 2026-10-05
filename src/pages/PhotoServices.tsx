@@ -198,7 +198,7 @@ export const PhotoServices: React.FC = () => {
                   <label className="block text-xs font-semibold text-slate-700">Customer Name *</label>
                   <input
                     type="text"
-                    placeholder="Full Name"
+                    placeholder="Enter your name"
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
                     className="mt-1 w-full p-2 text-xs border border-slate-300 rounded-lg"

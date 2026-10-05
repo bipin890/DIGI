@@ -170,16 +170,23 @@ export const ServicesCatalog: React.FC<ServicesCatalogProps> = ({
                         {s.code}
                       </span>
                     </div>
-                    <span className="text-sm font-black font-mono text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                      Rs. {parseFloat(s.defaultPrice).toFixed(2)}
-                    </span>
+                    {s.categorySlug === 'bill-payment' || parseFloat(s.defaultPrice) === 0 ? (
+                      <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                        Variable (As per Bill)
+                      </span>
+                    ) : (
+                      <span className="text-sm font-black font-mono text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                        Rs. {parseFloat(s.defaultPrice).toFixed(2)}
+                      </span>
+                    )}
                   </div>
 
                   <h3 className="text-sm font-bold text-slate-900 mt-2 leading-tight">
                     {s.name}
                   </h3>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    Category: <span className="font-semibold text-slate-700">{s.categoryName}</span> • per {s.unit}
+                    Category: <span className="font-semibold text-slate-700">{s.categoryName}</span>
+                    {s.categorySlug !== 'bill-payment' && parseFloat(s.defaultPrice) > 0 && ` • per ${s.unit}`}
                   </p>
                   {s.description && (
                     <p className="text-xs text-slate-600 mt-2 line-clamp-2 bg-slate-50 p-2 rounded-lg border border-slate-100">

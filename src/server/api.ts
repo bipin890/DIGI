@@ -6,7 +6,7 @@ import {
   printingOrders, photoOrders, designOrders, studentServices,
   expenses, inventoryItems, inventoryTransactions, activityLogs, shopSettings
 } from '../db/schema.ts';
-import { eq, desc, asc, sql, and, or, ilike, gte, lte } from 'drizzle-orm';
+import { eq, ne, inArray, desc, asc, sql, and, or, ilike, gte, lte } from 'drizzle-orm';
 import { AuthRequest, authenticateUser, requireAdmin } from '../middleware/auth.ts';
 
 export const apiRouter = Router();
@@ -111,18 +111,28 @@ apiRouter.get('/dashboard/stats', async (req: AuthRequest, res: Response) => {
     const today = new Date().toISOString().split('T')[0];
     const startOfToday = new Date(`${today}T00:00:00.000Z`);
 
-    // 1. Invoices stats
+    // 1. Invoices & refunds stats
     const allInvoices = await db.select().from(invoices);
+    const allRefunds = await db.select().from(refunds);
     const validInvoices = allInvoices.filter(i => i.status !== 'Cancelled');
     
-    // Today's invoices
+    // Today's invoices & refunds
     const todayInvoices = validInvoices.filter(i => {
       const invDate = new Date(i.createdAt).toISOString().split('T')[0];
       return invDate === today;
     });
 
-    const todaySales = todayInvoices.reduce((sum, i) => sum + parseFloat(i.grandTotal || '0'), 0);
-    const todayPaid = todayInvoices.reduce((sum, i) => sum + parseFloat(i.paidAmount || '0'), 0);
+    const todayRefunds = allRefunds
+      .filter(r => new Date(r.createdAt).toISOString().split('T')[0] === today)
+      .reduce((sum, r) => sum + parseFloat(r.amount || '0'), 0);
+    const totalRefundsSum = allRefunds.reduce((sum, r) => sum + parseFloat(r.amount || '0'), 0);
+
+    const grossTodaySales = todayInvoices.reduce((sum, i) => sum + parseFloat(i.grandTotal || '0'), 0);
+    const grossTodayPaid = todayInvoices.reduce((sum, i) => sum + parseFloat(i.paidAmount || '0'), 0);
+
+    // Net sales & collected today (accounting for refunds)
+    const todaySales = Math.max(0, grossTodaySales - todayRefunds);
+    const todayPaid = Math.max(0, grossTodayPaid - todayRefunds);
 
     // Today's expenses
     const allExpenses = await db.select().from(expenses);
@@ -132,9 +142,10 @@ apiRouter.get('/dashboard/stats', async (req: AuthRequest, res: Response) => {
 
     const todayProfit = todaySales - todayExpenses;
 
-    // Overall metrics
+    // Overall metrics (net of total refunds)
     const totalDues = validInvoices.reduce((sum, i) => sum + parseFloat(i.dueAmount || '0'), 0);
-    const totalSales = validInvoices.reduce((sum, i) => sum + parseFloat(i.grandTotal || '0'), 0);
+    const grossTotalSales = validInvoices.reduce((sum, i) => sum + parseFloat(i.grandTotal || '0'), 0);
+    const totalSales = Math.max(0, grossTotalSales - totalRefundsSum);
     const totalExpensesSum = allExpenses.reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0);
     const totalProfit = totalSales - totalExpensesSum;
 
@@ -176,15 +187,18 @@ apiRouter.get('/dashboard/stats', async (req: AuthRequest, res: Response) => {
     // Recent 5 Customers
     const recentCustomers = await db.select().from(customers).orderBy(desc(customers.updatedAt)).limit(5);
 
-    // Last 7 days sales chart
+    // Last 7 days sales chart (net of refunds)
     const last7Days: { date: string; sales: number; expenses: number }[] = [];
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
       const dateStr = d.toISOString().split('T')[0];
-      const daySales = validInvoices
+      const dayRefunds = allRefunds
+        .filter(r => new Date(r.createdAt).toISOString().split('T')[0] === dateStr)
+        .reduce((sum, r) => sum + parseFloat(r.amount || '0'), 0);
+      const daySales = Math.max(0, validInvoices
         .filter(inv => new Date(inv.createdAt).toISOString().split('T')[0] === dateStr)
-        .reduce((sum, inv) => sum + parseFloat(inv.grandTotal || '0'), 0);
+        .reduce((sum, inv) => sum + parseFloat(inv.grandTotal || '0'), 0) - dayRefunds);
       const dayExp = allExpenses
         .filter(exp => exp.date === dateStr)
         .reduce((sum, exp) => sum + parseFloat(exp.amount || '0'), 0);
@@ -194,10 +208,13 @@ apiRouter.get('/dashboard/stats', async (req: AuthRequest, res: Response) => {
     res.json({
       summary: {
         todaySales,
+        todayGrossSales: grossTodaySales,
+        todayRefunds,
         todayPaid,
         todayExpenses,
         todayProfit,
         totalSales,
+        totalRefunds: totalRefundsSum,
         totalExpenses: totalExpensesSum,
         totalProfit,
         totalDues,
@@ -340,6 +357,58 @@ apiRouter.put('/customers/:id', async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error('Error updating customer:', error);
     res.status(500).json({ error: 'Failed to update customer' });
+  }
+});
+
+// Admin-only: Permanently Delete Customer & Linked Records
+apiRouter.delete('/customers/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const customerId = parseInt(req.params.id, 10);
+    const cust = await db.select().from(customers).where(eq(customers.id, customerId)).limit(1);
+    if (!cust.length) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+    const customer = cust[0];
+
+    // Find all invoices for this customer
+    const custInvoices = await db.select().from(invoices).where(eq(invoices.customerId, customerId));
+    const invIds = custInvoices.map(i => i.id);
+
+    // Delete refunds, payments, and invoice line items
+    if (invIds.length > 0) {
+      await db.delete(refunds).where(or(inArray(refunds.invoiceId, invIds), eq(refunds.customerId, customerId)));
+      await db.delete(payments).where(or(inArray(payments.invoiceId, invIds), eq(payments.customerId, customerId)));
+      await db.delete(invoiceItems).where(inArray(invoiceItems.invoiceId, invIds));
+      await db.delete(invoices).where(eq(invoices.customerId, customerId));
+    } else {
+      await db.delete(refunds).where(eq(refunds.customerId, customerId));
+      await db.delete(payments).where(eq(payments.customerId, customerId));
+    }
+
+    // Delete related service orders
+    await db.delete(applications).where(eq(applications.customerId, customerId));
+    await db.delete(printingOrders).where(eq(printingOrders.customerId, customerId));
+    await db.delete(photoOrders).where(eq(photoOrders.customerId, customerId));
+    await db.delete(designOrders).where(eq(designOrders.customerId, customerId));
+    await db.delete(studentServices).where(eq(studentServices.customerId, customerId));
+
+    // Delete customer record
+    await db.delete(customers).where(eq(customers.id, customerId));
+
+    await logActivity(
+      req,
+      'Customer Deleted',
+      'Customer',
+      `Admin permanently deleted customer: ${customer.name} (${customer.customerCode}) and all linked records`
+    );
+
+    res.json({
+      success: true,
+      message: `Customer ${customer.name} and all linked records deleted successfully.`,
+    });
+  } catch (error) {
+    console.error('Error deleting customer:', error);
+    res.status(500).json({ error: 'Failed to delete customer' });
   }
 });
 
@@ -945,6 +1014,64 @@ apiRouter.post('/invoices/:id/refund', requireAdmin, async (req: AuthRequest, re
   } catch (error) {
     console.error('Error processing refund:', error);
     res.status(500).json({ error: 'Failed to process refund' });
+  }
+});
+
+// Admin-only: Permanently Delete Invoice / Statement
+apiRouter.delete('/invoices/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const invoiceId = parseInt(req.params.id, 10);
+    const invoiceRecords = await db.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
+    if (!invoiceRecords.length) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+    const invoice = invoiceRecords[0];
+
+    // 1. Delete associated payments
+    await db.delete(payments).where(eq(payments.invoiceId, invoiceId));
+
+    // 2. Delete associated refunds
+    await db.delete(refunds).where(eq(refunds.invoiceId, invoiceId));
+
+    // 3. Delete invoice line items
+    await db.delete(invoiceItems).where(eq(invoiceItems.invoiceId, invoiceId));
+
+    // 4. Delete the invoice itself
+    await db.delete(invoices).where(eq(invoices.id, invoiceId));
+
+    // 5. Recalculate customer totals if customerId exists
+    if (invoice.customerId) {
+      const remainingCustInvoices = await db.select().from(invoices).where(
+        and(eq(invoices.customerId, invoice.customerId), ne(invoices.status, 'Cancelled'))
+      );
+      const totalSpending = remainingCustInvoices.reduce((sum, inv) => sum + parseFloat(inv.grandTotal), 0);
+      const paidAmount = remainingCustInvoices.reduce((sum, inv) => sum + parseFloat(inv.paidAmount), 0);
+      const dueAmount = remainingCustInvoices.reduce((sum, inv) => sum + parseFloat(inv.dueAmount), 0);
+      const visitCount = Math.max(1, remainingCustInvoices.length);
+
+      await db.update(customers).set({
+        totalSpending: totalSpending.toFixed(2),
+        paidAmount: paidAmount.toFixed(2),
+        dueAmount: dueAmount.toFixed(2),
+        visitCount,
+        updatedAt: new Date(),
+      }).where(eq(customers.id, invoice.customerId));
+    }
+
+    await logActivity(
+      req,
+      'Invoice Deleted',
+      'Billing',
+      `Admin permanently deleted statement/invoice ${invoice.invoiceNumber} for customer ${invoice.customerName}`
+    );
+
+    res.json({
+      success: true,
+      message: `Invoice ${invoice.invoiceNumber} deleted successfully.`,
+    });
+  } catch (error) {
+    console.error('Error deleting invoice:', error);
+    res.status(500).json({ error: 'Failed to delete invoice' });
   }
 });
 

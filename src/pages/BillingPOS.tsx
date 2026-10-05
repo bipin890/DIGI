@@ -12,7 +12,8 @@ import {
   CheckCircle2,
   AlertCircle,
   Calendar,
-  X
+  X,
+  Trash2
 } from 'lucide-react';
 import { Invoice } from '../types/index.ts';
 import { useAuth } from '../context/AuthContext.tsx';
@@ -42,6 +43,7 @@ export const BillingPOS: React.FC<BillingPOSProps> = ({
   const [refundModalInvoice, setRefundModalInvoice] = useState<Invoice | null>(null);
   const [refundAmount, setRefundAmount] = useState('');
   const [refundReason, setRefundReason] = useState('');
+  const [deleteModalInvoice, setDeleteModalInvoice] = useState<Invoice | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [actionError, setActionError] = useState('');
 
@@ -134,6 +136,28 @@ export const BillingPOS: React.FC<BillingPOSProps> = ({
       await loadInvoices();
     } catch (err: any) {
       setActionError(err.message || 'Error processing refund');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleDeleteInvoice = async () => {
+    if (!deleteModalInvoice) return;
+    try {
+      setIsProcessing(true);
+      setActionError('');
+      const res = await fetchApi(`/api/invoices/${deleteModalInvoice.id}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to delete invoice');
+      }
+      setDeleteModalInvoice(null);
+      await loadInvoices();
+    } catch (err: any) {
+      console.error('Delete invoice error:', err);
+      setActionError(err.message || 'Error deleting invoice');
     } finally {
       setIsProcessing(false);
     }
@@ -372,6 +396,17 @@ export const BillingPOS: React.FC<BillingPOSProps> = ({
                             <RotateCcw className="w-3.5 h-3.5" />
                           </button>
                         )}
+
+                        {/* Admin Delete Statement / Invoice */}
+                        {isAdmin && (
+                          <button
+                            onClick={() => setDeleteModalInvoice(inv)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                            title="Admin: Delete Invoice/Statement"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -526,6 +561,47 @@ export const BillingPOS: React.FC<BillingPOSProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Delete Invoice Confirmation Modal */}
+      {deleteModalInvoice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
+          <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl p-5 border border-rose-200">
+            <div className="flex items-center gap-2 text-rose-600 font-bold text-base mb-2">
+              <Trash2 className="w-5 h-5" />
+              <span>Delete Statement / Bill</span>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to permanently delete statement/invoice{' '}
+              <strong className="font-mono text-slate-900">{deleteModalInvoice.invoiceNumber}</strong> for{' '}
+              <strong className="text-slate-900">{deleteModalInvoice.customerName}</strong> (Total: Rs.{' '}
+              {parseFloat(deleteModalInvoice.grandTotal).toFixed(2)})?
+            </p>
+            <p className="text-[11px] text-rose-700 font-medium bg-rose-50 p-2.5 rounded-lg mt-3 border border-rose-100">
+              ⚠️ This will permanently remove this invoice, associated payment receipts, refunds, and line items from all records and financial reports.
+            </p>
+            {actionError && (
+              <div className="p-2 bg-rose-50 text-rose-700 text-xs rounded-lg mt-2">{actionError}</div>
+            )}
+            <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setDeleteModalInvoice(null)}
+                className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteInvoice}
+                disabled={isProcessing}
+                className="px-4 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm disabled:opacity-50"
+              >
+                {isProcessing ? 'Deleting...' : 'Delete Permanently'}
+              </button>
+            </div>
           </div>
         </div>
       )}

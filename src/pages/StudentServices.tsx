@@ -178,7 +178,7 @@ export const StudentServices: React.FC = () => {
                   <label className="block text-xs font-semibold text-slate-700">Student Name *</label>
                   <input
                     type="text"
-                    placeholder="Student Name"
+                    placeholder="Enter your name"
                     value={studentName}
                     onChange={(e) => setStudentName(e.target.value)}
                     className="mt-1 w-full p-2 text-xs border border-slate-300 rounded-lg"

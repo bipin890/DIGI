@@ -356,7 +356,7 @@ export const Customers: React.FC<CustomersProps> = ({
                 <label className="block text-xs font-semibold text-slate-700">Full Name *</label>
                 <input
                   type="text"
-                  placeholder="Ram Bahadur Thapa"
+                  placeholder="Enter your name"
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
                   className="mt-1 w-full p-2 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:outline-none"
@@ -380,7 +380,7 @@ export const Customers: React.FC<CustomersProps> = ({
                 <label className="block text-xs font-semibold text-slate-700">Address</label>
                 <input
                   type="text"
-                  placeholder="Kathmandu / Ward / Tole"
+                  placeholder="Enter your address"
                   value={formAddress}
                   onChange={(e) => setFormAddress(e.target.value)}
                   className="mt-1 w-full p-2 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:outline-none"

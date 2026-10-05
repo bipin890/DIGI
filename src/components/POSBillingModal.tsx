@@ -169,7 +169,8 @@ export const POSBillingModal: React.FC<POSBillingModalProps> = ({
 
   // Add service to cart with editable defaults
   const addToCart = (service: Service) => {
-    const defaultRate = parseFloat(service.defaultPrice) || 0;
+    const isVariableBill = service.categorySlug === 'bill-payment' || parseFloat(service.defaultPrice) === 0;
+    const defaultRate = isVariableBill ? 0 : (parseFloat(service.defaultPrice) || 0);
     setCart([
       ...cart,
       {
@@ -178,7 +179,7 @@ export const POSBillingModal: React.FC<POSBillingModalProps> = ({
         categoryName: service.categoryName,
         quantity: 1,
         unit: service.unit || 'service',
-        rate: defaultRate,        // Operator can freely edit this
+        rate: defaultRate,        // Operator enters customer's actual bill amount
         serviceCharge: 0,        // Operator can enter service charge
         discount: 0,             // Operator can enter discount
       },
@@ -462,7 +463,7 @@ export const POSBillingModal: React.FC<POSBillingModalProps> = ({
                       <label className="block text-[11px] font-semibold text-slate-700">Full Name *</label>
                       <input
                         type="text"
-                        placeholder="Customer Name"
+                        placeholder="Enter your name"
                         value={customerName}
                         onChange={(e) => setCustomerName(e.target.value)}
                         className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-md focus:ring-1 focus:ring-blue-500"
@@ -603,9 +604,15 @@ export const POSBillingModal: React.FC<POSBillingModalProps> = ({
                         <span className="text-xs font-bold text-slate-900 group-hover:text-blue-700 leading-tight">
                           {service.name}
                         </span>
-                        <span className="text-[11px] font-bold text-emerald-800 font-mono">
-                          Rs. {parseFloat(service.defaultPrice)}
-                        </span>
+                        {service.categorySlug === 'bill-payment' || parseFloat(service.defaultPrice) === 0 ? (
+                          <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                            Custom Bill
+                          </span>
+                        ) : (
+                          <span className="text-[11px] font-bold text-emerald-800 font-mono">
+                            Rs. {parseFloat(service.defaultPrice)}
+                          </span>
+                        )}
                       </div>
                       <div className="mt-1 flex items-center justify-between text-[10px] text-slate-500">
                         <span>{service.categoryName}</span>
@@ -683,15 +690,24 @@ export const POSBillingModal: React.FC<POSBillingModalProps> = ({
 
                           {/* Manual Rate / Price */}
                           <div>
-                            <label className="block text-[10px] font-bold text-slate-700">Price (NPR) *</label>
+                            <label className="block text-[10px] font-bold text-slate-700">
+                              {item.categoryName === 'Bill Payment & Recharge' || item.rate === 0
+                                ? 'Bill Amt (NPR) *'
+                                : 'Price (NPR) *'}
+                            </label>
                             <input
                               type="number"
                               step="any"
                               min="0"
-                              value={item.rate}
+                              value={item.rate === 0 ? '' : item.rate}
+                              placeholder="0.00"
                               onChange={(e) => updateCartItem(idx, 'rate', parseFloat(e.target.value) || 0)}
-                              className="w-full px-1.5 py-1 text-xs font-mono font-extrabold bg-white border border-blue-400 rounded text-right text-blue-950"
-                              title="Manually enter item rate/price"
+                              className={`w-full px-1.5 py-1 text-xs font-mono font-extrabold bg-white rounded text-right text-blue-950 border ${
+                                item.categoryName === 'Bill Payment & Recharge' || item.rate === 0
+                                  ? 'border-amber-400 focus:ring-1 focus:ring-amber-500 bg-amber-50/20'
+                                  : 'border-blue-400'
+                              }`}
+                              title={item.categoryName === 'Bill Payment & Recharge' ? 'Enter customer bill amount' : 'Manually enter item rate/price'}
                             />
                           </div>
 

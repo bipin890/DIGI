@@ -201,7 +201,7 @@ export const StaffManagement: React.FC = () => {
                 <label className="block text-xs font-semibold text-slate-700">Full Name *</label>
                 <input
                   type="text"
-                  placeholder="e.g. Kiran Sharma"
+                  placeholder="Enter staff name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="mt-1 w-full p-2 text-xs border border-slate-300 rounded-lg"
